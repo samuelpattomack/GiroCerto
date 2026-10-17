@@ -7,7 +7,7 @@ Sistema de gestão para oficinas mecânicas. Projeto 2 de Computação em Nuvem,
 | Nome | RA |
 |------|----|
 | Lucas Zeferino Baracat | 10396267 |
-|  |  |
+| Samuel Patto Marcondes Manfredini Ferreira | 32155549 |
 |  |  |
 |  |  |
 
