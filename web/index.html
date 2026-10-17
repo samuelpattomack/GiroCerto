@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GiroCerto | Gestão para oficinas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topo">
+  <div class="wrap topo-in">
+    <a href="#" class="marca"><span class="marca-icone">GC</span>GiroCerto</a>
+    <nav>
+      <a href="#recursos">Recursos</a>
+      <a href="#fluxo">Como funciona</a>
+      <a href="#prototipo">Protótipo</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap hero-in">
+    <div>
+      <p class="etiqueta">Para oficinas mecânicas</p>
+      <h1>O histórico de cada carro, no lugar certo.</h1>
+      <p class="lead">Clientes, veículos, ordens de serviço e fotos de entrada num só sistema. Chega de caderno, planilha e foto perdida no celular do mecânico.</p>
+      <a href="#prototipo" class="botao">Ver o protótipo</a>
+    </div>
+    <div class="placa" aria-hidden="true">
+      <span class="placa-topo">BRASIL</span>
+      <span class="placa-num">GRC1A26</span>
+    </div>
+  </div>
+</section>
+
+<section id="recursos" class="secao">
+  <div class="wrap">
+    <h2>O que resolve</h2>
+    <div class="cards">
+      <article class="card">
+        <span class="num">01</span>
+        <h3>Histórico do veículo</h3>
+        <p>Cada placa tem a lista de todas as ordens de serviço, com data, quilometragem e o que foi trocado.</p>
+      </article>
+      <article class="card">
+        <span class="num">02</span>
+        <h3>Fotos na ordem</h3>
+        <p>O mecânico tira a foto pelo celular e ela já fica ligada à ordem. Na entrega, o estado do carro está registrado.</p>
+      </article>
+      <article class="card">
+        <span class="num">03</span>
+        <h3>Orçamento padronizado</h3>
+        <p>Catálogo de serviços com preço de referência. O total da ordem é calculado na hora.</p>
+      </article>
+      <article class="card">
+        <span class="num">04</span>
+        <h3>Faturamento do mês</h3>
+        <p>Quanto entrou em cada mês e quais serviços mais saem, sem montar planilha.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="fluxo" class="secao secao-escura">
+  <div class="wrap">
+    <h2>Como funciona</h2>
+    <ol class="fluxo">
+      <li><strong>Recepção</strong><span>A atendente busca o cliente pelo telefone ou cadastra na hora, junto com o carro.</span></li>
+      <li><strong>Ordem aberta</strong><span>Registra quilometragem, o problema relatado e os serviços previstos.</span></li>
+      <li><strong>Fotos</strong><span>O mecânico anexa fotos e o PDF do orçamento. A miniatura aparece sozinha.</span></li>
+      <li><strong>Entrega</strong><span>Ordem concluída, data de saída registrada e valor entra no relatório do mês.</span></li>
+    </ol>
+  </div>
+</section>
+
+<section id="prototipo" class="secao">
+  <div class="wrap">
+    <h2>Protótipo da ordem de serviço</h2>
+    <div class="tela">
+      <div class="tela-barra"><i></i><i></i><i></i></div>
+      <div class="tela-corpo">
+        <div class="os-cabecalho">
+          <div>
+            <span class="os-id">OS #0142</span>
+            <h3>Fiat Argo 2021 · <span class="mono">GRC1A26</span></h3>
+            <p class="muted">Cliente: Paulo Henrique · (11) 98123-4410 · 48.230 km</p>
+          </div>
+          <span class="status">Em andamento</span>
+        </div>
+        <table class="itens">
+          <thead><tr><th>Serviço</th><th>Qtd</th><th>Valor</th></tr></thead>
+          <tbody>
+            <tr><td>Troca de pastilhas dianteiras</td><td>1</td><td>R$ 280,00</td></tr>
+            <tr><td>Troca de óleo e filtro</td><td>1</td><td>R$ 190,00</td></tr>
+            <tr><td>Alinhamento e balanceamento</td><td>1</td><td>R$ 120,00</td></tr>
+          </tbody>
+          <tfoot><tr><td colspan="2">Total</td><td>R$ 590,00</td></tr></tfoot>
+        </table>
+        <div class="anexos">
+          <span class="anexo-titulo">Anexos</span>
+          <div class="anexo-lista">
+            <div class="anexo foto">frente.jpg</div>
+            <div class="anexo foto">lateral.jpg</div>
+            <div class="anexo pdf">orcamento.pdf</div>
+            <div class="anexo novo">+ Enviar</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="rodape">
+  <div class="wrap">
+    <p>GiroCerto · Projeto 2 de Computação em Nuvem · Mackenzie 2026.2</p>
+  </div>
+</footer>
+
+</body>
+</html>
