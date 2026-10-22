@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GiroCerto | Cadastros</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<header class="topo">
+  <div class="wrap topo-in">
+    <a href="index.html" class="marca"><span class="marca-icone">GC</span>GiroCerto</a>
+    <nav>
+      <a href="#clientes" data-aba="clientes">Clientes</a>
+      <a href="#veiculos" data-aba="veiculos">Veículos</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap app">
+  <p id="aviso" class="aviso" hidden></p>
+
+  <section id="aba-clientes" class="aba">
+    <div class="cab">
+      <h2>Clientes</h2>
+      <input id="busca" type="search" placeholder="Buscar por nome ou telefone">
+    </div>
+
+    <form id="form-cliente" class="form">
+      <input type="hidden" name="id">
+      <label>Nome *<input name="nome" required maxlength="120"></label>
+      <label>Telefone *<input name="telefone" required placeholder="11987654321"></label>
+      <label>E-mail<input name="email" type="email" maxlength="160"></label>
+      <div class="acoes">
+        <button type="submit" class="botao">Salvar cliente</button>
+        <button type="reset" class="botao sec">Limpar</button>
+      </div>
+    </form>
+
+    <table class="tabela">
+      <thead><tr><th>ID</th><th>Nome</th><th>Telefone</th><th>E-mail</th><th>Veículos</th><th></th></tr></thead>
+      <tbody id="lista-clientes"></tbody>
+    </table>
+  </section>
+
+  <section id="aba-veiculos" class="aba" hidden>
+    <div class="cab">
+      <h2>Veículos</h2>
+      <select id="filtro-cliente"><option value="">Todos os clientes</option></select>
+    </div>
+
+    <form id="form-veiculo" class="form">
+      <input type="hidden" name="id">
+      <label>Cliente *<select name="clienteId" required></select></label>
+      <label>Placa *<input name="placa" required placeholder="ABC1D23" maxlength="8"></label>
+      <label>Marca *<input name="marca" required maxlength="60"></label>
+      <label>Modelo *<input name="modelo" required maxlength="60"></label>
+      <label>Ano *<input name="ano" type="number" required min="1950" max="2100"></label>
+      <div class="acoes">
+        <button type="submit" class="botao">Salvar veículo</button>
+        <button type="reset" class="botao sec">Limpar</button>
+      </div>
+    </form>
+
+    <table class="tabela">
+      <thead><tr><th>ID</th><th>Placa</th><th>Marca / modelo</th><th>Ano</th><th>Cliente</th><th></th></tr></thead>
+      <tbody id="lista-veiculos"></tbody>
+    </table>
+  </section>
+
+  <p class="muted rodape-api">API: <span id="api-url" class="mono"></span></p>
+</main>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

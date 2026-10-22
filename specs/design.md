@@ -9,7 +9,8 @@ flowchart LR
     U -->|PUT URL pré-assinada| S3A[S3 anexos<br/>girocerto-anexos]
 
     subgraph VPC [VPC 10.0.0.0/16]
-        subgraph PUB [Subnets públicas]
+        IGW[Internet Gateway]
+        subgraph PUB [Subnet pública]
             BAS[EC2 bastion t3.micro]
         end
         subgraph PRIV [Subnets privadas]
@@ -31,6 +32,7 @@ flowchart LR
     VPCE --> S3A
     LPROC --> RDS
     BAS -->|5432 manutenção| RDS
+    IGW --- BAS
     LPROC --> CW[CloudWatch Logs]
     LCRUD --> CW
     LREL --> CW
@@ -38,8 +40,8 @@ flowchart LR
 
 Fluxo principal:
 
-1. O front é servido pelo bucket `girocerto-web` com hospedagem de site estático.
-2. O front chama a API no API Gateway, que encaminha para a Lambda `crud` ou `relatorios`.
+1. O front é servido pelo bucket `girocerto-web-5j11` com hospedagem de site estático (`index.html` é a landing page e `app.html` a tela de cadastros).
+2. O front chama a API no API Gateway, que encaminha para a Lambda `crud` (recurso `/{proxy+}`) ou `relatorios` (recurso `/relatorios/{proxy+}`, que tem precedência por ser mais específico).
 3. As Lambdas rodam nas subnets privadas e acessam o RDS pelo endpoint DNS.
 4. Para anexar um arquivo, o front pede `POST /ordens/{id}/anexos/upload-url`, recebe a URL pré-assinada e faz o PUT direto no bucket `girocerto-anexos`.
 5. O evento `ObjectCreated` em `uploads/` dispara a Lambda `processa-anexo`, que acessa o S3 pelo Gateway Endpoint (sem NAT), gera a miniatura e grava os metadados no RDS.
@@ -55,7 +57,12 @@ Todas as Lambdas usam a `LabRole`. Não há NAT Gateway.
 | subnet-privada-a | 10.0.11.0/24 | us-east-1a | RDS, Lambdas |
 | subnet-privada-b | 10.0.12.0/24 | us-east-1b | RDS, Lambdas |
 
-A tabela de rotas privada não tem rota para a internet, apenas a rota local e a do Gateway Endpoint do S3. O DB subnet group usa as duas subnets privadas, porque o RDS exige pelo menos duas AZs.
+| Tabela de rotas | Subnets | Rotas |
+|-----------------|---------|-------|
+| rt-publica | subnet-publica-a | `10.0.0.0/16` local; `0.0.0.0/0` → Internet Gateway `girocerto-igw` |
+| rt-privada | subnet-privada-a, subnet-privada-b | `10.0.0.0/16` local; prefix list do S3 → Gateway Endpoint |
+
+A tabela de rotas privada não tem rota para a internet, apenas a rota local e a do Gateway Endpoint do S3. Por isso nada nas subnets privadas é alcançável de fora, e o RDS também é criado com `Publicly accessible = No`. Não há NAT Gateway. O DB subnet group usa as duas subnets privadas, porque o RDS exige pelo menos duas AZs.
 
 ## Security Groups
 
@@ -63,9 +70,11 @@ A tabela de rotas privada não tem rota para a internet, apenas a rota local e a
 |----|---------|-------|
 | sg-lambda | nenhuma | 5432 para sg-rds; 443 para o prefix list do S3 |
 | sg-rds | 5432 de sg-lambda; 5432 de sg-bastion | nenhuma regra necessária |
-| sg-bastion | 22 do IP do aluno (/32), ajustado a cada sessão | 5432 para sg-rds |
+| sg-bastion | 22 do IP do aluno (/32), ajustado a cada sessão | 5432 para sg-rds; 80 e 443 para a internet (instalar o cliente `psql` com `dnf`) |
 
 O RDS é criado com `Publicly accessible = No`.
+
+Como a aplicação chega ao banco: o navegador nunca fala com o RDS. Ele chama o API Gateway, que invoca a Lambda `crud`. A Lambda roda com uma interface de rede nas subnets privadas usando o `sg-lambda`, e o `sg-rds` só aceita a porta 5432 vinda de `sg-lambda` ou `sg-bastion`. A regra é por referência de SG, não por IP, então continua valendo quando a Lambda ou o bastion mudam de endereço. A conexão usa TLS, validado com o certificado da AWS que vai no pacote da Lambda.
 
 ## Modelo de dados
 
@@ -134,6 +143,9 @@ Regras no banco:
 - `veiculo.cliente_id` e `ordem_servico.veiculo_id` com `ON DELETE RESTRICT`, que garante o bloqueio de exclusão das HU-01 e HU-02.
 - `item_ordem` com chave primária composta, o que impede o mesmo serviço duas vezes na mesma ordem (aumenta-se a quantidade).
 - `CHECK (status IN ('ABERTA','EM_ANDAMENTO','CONCLUIDA','CANCELADA'))`.
+- `CHECK (categoria IN ('MOTOR','FREIO','SUSPENSAO','ELETRICA','REVISAO','OUTROS'))`.
+- `CHECK` do formato da placa (antigo ou Mercosul) e `UNIQUE` em `cliente.telefone` e `veiculo.placa`. A API também valida, mas o banco garante a regra mesmo para quem acessa pelo bastion.
+- `item_ordem` e `anexo` usam `ON DELETE CASCADE` a partir da ordem: excluir uma ordem ABERTA leva junto seus itens.
 - `CHECK (preco_referencia > 0)` e `CHECK (quantidade > 0)`.
 - `anexo.situacao` começa como `PENDENTE` e a Lambda muda para `PROCESSADO` ou `ERRO`.
 
@@ -168,7 +180,13 @@ Base: `https://{api-id}.execute-api.us-east-1.amazonaws.com/prod`
 | GET | /relatorios/faturamento-mensal?inicio=&fim= | Faturamento por mês | 06 |
 | GET | /relatorios/servicos-mais-realizados?inicio=&fim= | Top 10 serviços | 06 |
 
-Códigos de resposta: 200, 201, 204, 400 (validação), 404, 409 (conflito de unicidade ou exclusão bloqueada).
+Códigos de resposta: 200, 201, 204, 400 (validação), 404, 405 (método não suportado na rota), 409 (conflito de unicidade, exclusão bloqueada ou ordem fechada). Erros voltam como `{"erro": "mensagem"}`.
+
+Também existe `GET /veiculos/{id}`, que devolve o veículo com o histórico de ordens (HU-02).
+
+Os campos do JSON usam camelCase (`clienteId`, `precoReferencia`, `valorUnitario`). `PUT` aceita só os campos que mudam; o restante é mantido.
+
+O schema está em `sql/01_schema.sql` e os dados de exemplo em `sql/02_seed.sql`.
 
 Exemplo de consulta do relatório de faturamento:
 
@@ -237,3 +255,19 @@ ORDER BY mes;
 **Decisão.** HTML, CSS e JavaScript sem framework, publicados como site estático no S3.
 
 **Motivos.** Não exige build nem servidor, e o deploy é um `aws s3 sync`. A URL da API fica num `config.js` gerado no deploy, atendendo ao RNF-03.
+
+### ADR-005 - Linguagem e driver da Lambda
+
+**Status:** aceito
+
+**Decisão.** Python 3.12 com o driver `pg8000`.
+
+**Motivos.** A Lambda na VPC não tem internet, então as dependências vão no `.zip`. O `pg8000` é Python puro: o pacote gerado em macOS ou Windows funciona na Lambda (Linux) sem compilar nada, ao contrário do `psycopg2`, que precisa de binário específico. O `scripts/empacotar-crud.sh` monta o pacote.
+
+### ADR-006 - Uma Lambda com rota proxy no API Gateway
+
+**Status:** aceito
+
+**Decisão.** Um único recurso `/{proxy+}` com método `ANY` e integração proxy para a Lambda `crud`, que faz o roteamento internamente. A Lambda também responde o `OPTIONS` com os cabeçalhos CORS.
+
+**Motivos.** Criar pelo console um recurso e um método para cada uma das 21 rotas de CRUD tomaria tempo e seria fácil de errar ao recriar (RNF-05). Com o proxy, o API Gateway tem um único método, e as rotas ficam versionadas no código. A desvantagem é que o API Gateway não valida os caminhos, então a Lambda devolve 404 e 405 por conta própria.

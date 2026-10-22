@@ -52,7 +52,7 @@ Critérios de aceite:
 Como dono da oficina, quero manter uma lista de serviços com preço de referência para padronizar os orçamentos.
 
 Critérios de aceite:
-- Cada serviço tem nome, categoria (motor, freio, suspensão, elétrica, revisão, outros) e preço de referência maior que zero.
+- Cada serviço tem nome, categoria (MOTOR, FREIO, SUSPENSAO, ELETRICA, REVISAO, OUTROS) e preço de referência maior que zero.
 - O preço de referência é sugerido ao adicionar o serviço numa ordem, mas pode ser alterado na ordem.
 - Um serviço já usado em alguma ordem não pode ser excluído, só desativado.
 
@@ -78,7 +78,7 @@ Critérios de aceite:
 
 | ID | Aplicação no GiroCerto |
 |----|------------------------|
-| RF-01 | CRUD de Cliente, Veículo, Ordem de Serviço e Serviço. Relações: Cliente 1:N Veículo, Veículo 1:N Ordem de Serviço e Ordem de Serviço N:N Serviço (tabela item_ordem). Tudo persistido no RDS PostgreSQL. |
+| RF-01 | CRUD de Cliente, Veículo, Ordem de Serviço e Serviço. Relações: Cliente 1:N Veículo, Veículo 1:N Ordem de Serviço e Ordem de Serviço N:N Serviço (tabela item_ordem). Tudo persistido no RDS PostgreSQL. A entrega de 23/10 demonstra Cliente e Veículo; Serviço e Ordem (com itens) já estão na mesma Lambda. |
 | RF-02 | Fotos e PDFs anexados à ordem de serviço. O backend gera a URL pré-assinada de PUT e o navegador envia direto para o bucket, no prefixo `uploads/ordens/{id}/`. |
 | RF-03 | Cada arquivo novo em `uploads/` dispara uma Lambda que lê os metadados (tipo, tamanho, dimensões) e, se for imagem, gera uma miniatura em `thumbs/`. O resultado é gravado na tabela anexo no RDS. |
 | RF-04 | `GET /relatorios/faturamento-mensal` e `GET /relatorios/servicos-mais-realizados` no API Gateway, implementados em Lambda com consultas usando JOIN e GROUP BY. |

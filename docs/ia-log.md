@@ -71,7 +71,7 @@ Discordamos da recomendação. O argumento principal para nós foi o RNF-03: o e
 ## 16/10 - Landing page
 
 **Prompt**
-> Crie uma landing page estática em HTML e CSS para o GiroCerto, apresentando o sistema para donos de oficina, com seções de funcionalidades e como funciona. Sem framework.
+> Crie uma landing page estática em HTML e CSS para o GiroCerto, apresentando o sistema para donos de oficina, com seções de funcionalidades e como funciona. Sem framework. (Feito por nos)
 
 **O que a IA gerou**
 Página com Bootstrap via CDN, textos genéricos de marketing e um formulário de contato que não enviava para lugar nenhum.
@@ -81,3 +81,74 @@ Página com Bootstrap via CDN, textos genéricos de marketing e um formulário d
 - Removemos o formulário falso.
 - Reescrevemos os textos com os problemas que levantamos no spec.
 - Adicionamos uma prévia da tela de ordem de serviço para servir de protótipo.
+
+## 22/10 - Entrega 3 (rede, RDS e CRUD)
+
+Ferramenta: Claude Code (agente no terminal), com o enunciado, `specs/spec.md` e `specs/design.md` como contexto.
+
+O pedido feito à IA foi curto: *"Quero que faça tudo que a entrega do dia 23 pede, menos o vídeo."* Funcionou porque a spec e o design já estavam detalhados, mas para o registro (e para repetir o trabalho se precisar) dividimos o pedido nas partes abaixo. Cada **Prompt** é a versão detalhada do que foi pedido, escrita por nós depois; os pedidos de correção no fim são os textos reais.
+
+### Scripts SQL
+
+**Prompt**
+> Com base no modelo ER e na seção "Regras no banco" do `specs/design.md`, gere `sql/01_schema.sql` para PostgreSQL 16 que possa ser rodado de novo sem erro (apaga e recria as tabelas). Use `ON DELETE RESTRICT` em `veiculo.cliente_id` e `ordem_servico.veiculo_id`, chave composta em `item_ordem`, os `CHECK` de status, categoria, preço e quantidade, e valide placa (ABC1234 ou ABC1D23) e e-mail no banco. Crie índices nas FKs. Gere também `sql/02_seed.sql` com 3 clientes, 4 veículos, 5 serviços e ordens concluídas em pelo menos dois meses diferentes, para o relatório da próxima entrega ter dados. (Prompt, alias, gerado com ajuda de IA para esclarecer de forma melhor para a IA oque ela deveria fazer)
+
+**O que a IA gerou**
+Os dois scripts. Além do pedido, colocou `ON DELETE RESTRICT` também em `item_ordem.servico_id` e `CASCADE` de ordem para itens e anexos.
+
+**O que fizemos**
+- Aceitamos o RESTRICT em `servico_id`: é ele que impede excluir um serviço já usado (HU-04).
+- Aceitamos o CASCADE de ordem para itens: só ordens ABERTA podem ser excluídas, e os itens não fazem sentido sem a ordem.
+- Rodamos os dois scripts num PostgreSQL local antes de usar no RDS.
+
+### Lambda do CRUD
+
+**Prompt**
+> Implemente em Python a Lambda `crud` descrita no ADR-001, para o API Gateway REST com integração proxy em `/{proxy+}`. Ela deve atender todas as rotas da tabela "Rotas da API" do `design.md`, exceto anexos e relatórios, e aplicar os critérios de aceite das HU-01 a HU-04 do `spec.md`: telefone e placa únicos (409), exclusão bloqueada quando há dependentes (409 com mensagem explicando), preço maior que zero, ordem CONCLUIDA ou CANCELADA sem alterações, data de saída preenchida ao concluir e valor do item sugerido pelo preço de referência. Leia a conexão de `DB_HOST`, `DB_NAME`, `DB_USER` e `DB_PASSWORD`, crie a conexão fora do handler, use apenas consultas parametrizadas e responda `OPTIONS` com os cabeçalhos CORS. A Lambda roda na VPC sem internet, então escolha um driver que possa ir dentro do .zip, e crie um script que gere esse .zip. (Prompt, alias, gerado com ajuda de IA para esclarecer de forma melhor para a IA oque ela deveria fazer)
+
+**O que a IA gerou**
+- `backend/crud/app.py` com uma tabela de rotas e uma função por operação.
+- `scripts/empacotar-crud.sh`, que baixa o driver para Linux e o certificado do RDS.
+
+**O que fizemos**
+- Ficamos com o driver `pg8000`, que a IA propôs por ser Python puro (ADR-005). O `psycopg2` precisaria de binário compilado para Linux.
+- Registramos no `design.md` a decisão do recurso `/{proxy+}` (ADR-006), para não criar 21 métodos à mão no console.
+- No teste local, a exclusão de um cliente com veículos voltava 400 em vez de 409. A primeira versão reconhecia o erro pelo texto da mensagem do PostgreSQL, que veio em português. A correção foi decidir pelo método HTTP: violação de FK num DELETE é sempre registro dependente.
+- Testamos todas as rotas contra o PostgreSQL local, incluindo os erros: placa inválida, telefone duplicado, cliente inexistente e ordem fechada.
+
+### Infraestrutura e README
+
+**Prompt**
+> Escreva no README o passo a passo para criar pelo console da AWS, no Learner Lab, a arquitetura do `design.md`: VPC com uma subnet pública e duas privadas, Internet Gateway, tabelas de rota, os três Security Groups, DB subnet group, RDS PostgreSQL `db.t3.micro` sem acesso público, bastion para rodar os scripts SQL, Lambda na VPC e API Gateway com stage `prod`. Restrições: sem CloudFormation/Terraform/SAM, sem NAT Gateway, usar `LabRole` e `LabInstanceProfile` em vez de criar roles, nenhum IP fixo e nenhuma senha no repositório. Inclua o que fazer ao iniciar uma nova sessão do Learner Lab. (Pedimos para a IA deixar o readme claro e formalizado)
+
+**O que a IA gerou**
+O README com as 8 seções e a seção "Ao iniciar uma nova sessão". Também apontou que o bastion precisa de saída 80/443 para instalar o `psql`, o que não estava no `design.md`.
+
+**O que fizemos**
+- Acrescentamos a regra de saída no `sg-bastion` e no `design.md`.
+- Completamos no `design.md` o Internet Gateway, as tabelas de rota e a explicação de como a Lambda chega ao RDS por referência de Security Group.
+- Criamos o `specs/tasks.md` com as tarefas desta e das próximas entregas.
+
+### Tela de cadastros
+
+**Prompt**
+> Crie `web/app.html` com HTML, CSS e JavaScript puro, reaproveitando o `style.css` da landing page, para listar, buscar, criar, editar e excluir clientes e veículos pela API. A URL da API deve vir de um `config.js` gerado no deploy (RNF-03). Mostre as mensagens de erro da API, para o usuário ver por que uma exclusão foi bloqueada, e escape os textos antes de montar a tabela.
+
+**O que a IA gerou**
+A tela, o `web/config.example.js` e um `scripts/servidor_local.py` que imita o API Gateway e o S3, para testar sem AWS.
+
+### Correções pedidas depois do teste
+
+Rodamos a tela localmente e pedimos correções.
+
+**Prompt real**
+> Quando tento editar algo, nada acontece. Me de solucoes e me ajude a resolver o retorno da API.
+
+**O que aconteceu**
+O clique funcionava, mas a tela não mostrava que estava editando. A IA destacou o formulário e trocou os botões para "Salvar alterações (#id)" e "Cancelar edição". Ao testar, ela mesma encontrou um bug mais grave: o "Limpar" não apagava o id escondido, então o próximo cadastro "novo" sobrescreveria o registro editado. Foi corrigido. O servidor local também passou a mandar o navegador não usar cache.
+
+**Prompt real**
+> Estou usando macOS. Adapte, tambem, para windows para todos os sistemas operacionais rodarem o programa.
+
+**O que aconteceu**
+Os comandos do README eram só de macOS/Linux. A IA acrescentou as versões para Windows (PowerShell, `icacls` para a chave do bastion e o CloudShell para gerar o .zip da Lambda).

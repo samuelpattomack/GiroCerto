@@ -1,0 +1,31 @@
+.app { padding: 32px 20px 64px; }
+.cab { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.cab h2 { font-size: 1.6rem; }
+
+input, select { font: inherit; padding: 9px 11px; border: 1px solid var(--linha); border-radius: 6px; background: #fff; width: 100%; }
+.cab input, .cab select { width: auto; min-width: 260px; }
+
+.form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; background: var(--card); border: 1px solid var(--linha); border-radius: 8px; padding: 18px; margin-bottom: 24px; }
+.form.editando { border: 2px solid var(--laranja); background: #fff6ef; }
+.form label { display: flex; flex-direction: column; gap: 6px; font-size: .88rem; font-weight: 600; }
+.acoes { display: flex; gap: 10px; align-items: end; }
+button.botao { border: 0; cursor: pointer; font: inherit; font-weight: 600; padding: 10px 18px; }
+.botao.sec { background: transparent; color: var(--texto); border: 1px solid var(--linha); }
+.botao.sec:hover { background: var(--linha); }
+
+.tabela { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--linha); border-radius: 8px; overflow: hidden; }
+.tabela th, .tabela td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--linha); font-size: .94rem; }
+.tabela th { background: var(--escuro); color: #fff; font-weight: 600; }
+.tabela td:last-child { white-space: nowrap; text-align: right; }
+.link { background: none; border: 0; font: inherit; cursor: pointer; color: var(--laranja); font-weight: 600; margin-left: 12px; }
+
+.aviso { position: fixed; top: 76px; right: 20px; z-index: 10; max-width: min(420px, calc(100vw - 40px)); padding: 12px 16px; border-radius: 6px; background: #e6f4ea; border: 1px solid #a8d5b5; box-shadow: 0 4px 14px rgba(0,0,0,.12); font-weight: 600; }
+.tabela tr.destaque td { background: #fff1c2; transition: background .4s; }
+.aviso.erro { background: #fdecea; border-color: #f5b5ae; }
+nav a.ativa { color: var(--laranja); font-weight: 600; }
+.rodape-api { margin-top: 28px; }
+
+@media (max-width: 720px) {
+  .tabela { display: block; overflow-x: auto; }
+  .cab input, .cab select { min-width: 0; width: 100%; }
+}
