@@ -4,3 +4,4 @@ build/
 *.zip
 __pycache__/
 web/config.js
+.venv/

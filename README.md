@@ -26,7 +26,159 @@ Sistema de gestão para oficinas mecânicas. Projeto 2 de Computação em Nuvem,
 | `web/index.html` | Landing page |
 | `web/app.html` | Tela de cadastro de clientes e veículos |
 
-## Visão geral da infraestrutura
+## Como usar este README
+
+| Quero... | Vá para |
+|----------|---------|
+| Testar o sistema no meu computador, sem AWS | [Rodar localmente no macOS](#rodar-localmente-no-macos) ou [no Windows](#rodar-localmente-no-windows) |
+| Publicar o sistema na AWS Learner Lab | [Publicar na AWS](#publicar-na-aws) |
+| Voltar a usar a AWS numa sessão nova do Lab | [Ao iniciar uma nova sessão do Learner Lab](#ao-iniciar-uma-nova-sessão-do-learner-lab) |
+
+## Rodar localmente
+
+Roda o sistema inteiro na sua máquina: um PostgreSQL local faz o papel do RDS, e o `scripts/servidor_local.py` faz o papel do API Gateway, da Lambda e do S3. Serve para testar antes de publicar; a entrega precisa do sistema rodando na AWS.
+
+Você vai precisar de **Git**, **Python 3** e **PostgreSQL 16 ou 17**. Os passos abaixo instalam tudo.
+
+### Rodar localmente no macOS
+
+Use o app **Terminal**. Rode um bloco por vez.
+
+**1. Instalar as dependências (só na primeira vez).** Se você ainda não tem o Homebrew, instale antes pelo comando em [brew.sh](https://brew.sh).
+
+```bash
+brew install git python postgresql@17
+brew services start postgresql@17
+```
+
+**2. Baixar o projeto (só na primeira vez).**
+
+```bash
+cd ~/Documents
+git clone https://github.com/samuelpattomack/GiroCerto.git
+cd GiroCerto
+```
+
+**3. Instalar a biblioteca do banco num ambiente virtual (só na primeira vez).**
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r backend/crud/requirements.txt
+```
+
+**4. Criar o banco com as tabelas e os dados de exemplo.** No macOS o usuário do banco é o seu usuário do sistema, sem senha. Rodar o `psql` de novo apaga e recria os dados.
+
+```bash
+createdb girocerto
+psql -d girocerto -f sql/01_schema.sql -f sql/02_seed.sql
+```
+
+**5. Subir o sistema.**
+
+```bash
+DB_HOST=127.0.0.1 DB_USER=$(whoami) DB_PASSWORD=local DB_SSL=off .venv/bin/python scripts/servidor_local.py
+```
+
+Quando aparecer `GiroCerto local em http://localhost:8765/app.html`, abra esse endereço no navegador. O terminal fica ocupado enquanto o servidor roda; para parar, `Ctrl+C`.
+
+**Nas próximas vezes**, basta entrar na pasta e repetir o passo 5:
+
+```bash
+cd ~/Documents/GiroCerto
+DB_HOST=127.0.0.1 DB_USER=$(whoami) DB_PASSWORD=local DB_SSL=off .venv/bin/python scripts/servidor_local.py
+```
+
+### Rodar localmente no Windows
+
+Use o **PowerShell** (menu Iniciar > digite "PowerShell"). Rode um bloco por vez.
+
+**1. Instalar as dependências (só na primeira vez).** O instalador do PostgreSQL vai abrir: escolha uma senha para o usuário `postgres` e **anote**, ela é usada nos próximos passos. Pode aceitar o resto como está.
+
+```powershell
+winget install -e --id Git.Git --accept-source-agreements --accept-package-agreements
+winget install -e --id Python.Python.3.12 --accept-package-agreements
+winget install -e --id PostgreSQL.PostgreSQL.17 --accept-package-agreements --interactive
+```
+
+**2. Colocar o PostgreSQL no PATH (só na primeira vez).** O instalador não faz isso sozinho.
+
+```powershell
+$pg = "C:\Program Files\PostgreSQL\17\bin"; $u = [Environment]::GetEnvironmentVariable("Path","User"); if ($u -notlike "*$pg*") { [Environment]::SetEnvironmentVariable("Path", "$u;$pg", "User") }
+```
+
+**Feche e abra o PowerShell de novo**, para ele enxergar os programas instalados. Para conferir, cada comando abaixo deve mostrar uma versão:
+
+```powershell
+git --version; py --version; psql --version
+```
+
+**3. Baixar o projeto (só na primeira vez).**
+
+```powershell
+cd $HOME\Documents
+git clone https://github.com/samuelpattomack/GiroCerto.git
+cd GiroCerto
+```
+
+**4. Instalar a biblioteca do banco num ambiente virtual (só na primeira vez).**
+
+```powershell
+py -m venv .venv
+.venv\Scripts\python -m pip install -r backend\crud\requirements.txt
+```
+
+**5. Criar o banco com as tabelas e os dados de exemplo.** Os comandos pedem a senha do `postgres` escolhida no passo 1. A primeira linha evita que os acentos fiquem quebrados. Rodar o `psql` de novo apaga e recria os dados.
+
+```powershell
+$env:PGCLIENTENCODING = "UTF8"
+createdb -U postgres girocerto
+psql -U postgres -d girocerto -f sql/01_schema.sql -f sql/02_seed.sql
+```
+
+**6. Subir o sistema.** Troque `<senha>` pela senha do `postgres`.
+
+```powershell
+$env:DB_HOST = "127.0.0.1"; $env:DB_USER = "postgres"; $env:DB_PASSWORD = "<senha>"; $env:DB_SSL = "off"
+.venv\Scripts\python scripts\servidor_local.py
+```
+
+Quando aparecer `GiroCerto local em http://localhost:8765/app.html`, abra esse endereço no navegador. O PowerShell fica ocupado enquanto o servidor roda; para parar, `Ctrl+C`.
+
+**Nas próximas vezes**, basta entrar na pasta e repetir o passo 6 (as variáveis valem só para a janela aberta):
+
+```powershell
+cd $HOME\Documents\GiroCerto
+$env:DB_HOST = "127.0.0.1"; $env:DB_USER = "postgres"; $env:DB_PASSWORD = "<senha>"; $env:DB_SSL = "off"
+.venv\Scripts\python scripts\servidor_local.py
+```
+
+### O que testar
+
+Em `http://localhost:8765/app.html`:
+
+1. Crie um cliente, clique em **Editar**, mude o e-mail e salve. Um aviso aparece no canto da tela e a linha fica destacada.
+2. Na aba **Veículos**, cadastre um veículo para esse cliente (placa no formato `ABC1234` ou `ABC1D23`).
+3. Tente excluir o cliente: o sistema bloqueia, porque ele tem veículo.
+4. Exclua o veículo e depois o cliente.
+
+A landing page fica em `http://localhost:8765/index.html`. Para testar a API pelo terminal (macOS, ou Git Bash no Windows), com o servidor rodando em outra janela: `./scripts/testar-api.sh http://localhost:8765/api`.
+
+### Problemas comuns
+
+| Mensagem ou sintoma | Solução |
+|---------------------|---------|
+| `command not found` / `não é reconhecido como nome de cmdlet` | O programa não foi instalado ou o terminal não foi reaberto depois da instalação. No Windows, confira o passo 2. |
+| `createdb: database "girocerto" already exists` | O banco já existe. Pode seguir para o `psql`. |
+| `password authentication failed for user "postgres"` | Senha errada. Use a mesma escolhida na instalação do PostgreSQL. |
+| `connection refused` ao criar o banco ou subir o servidor | O PostgreSQL não está rodando. macOS: `brew services start postgresql@17`. Windows: abra **Serviços** e inicie `postgresql-x64-17`. |
+| `Address already in use` / porta 8765 ocupada | Já tem um servidor aberto em outra janela. Feche-o com `Ctrl+C` ou use outra porta: `PORTA=8766` (macOS) ou `$env:PORTA = "8766"` (Windows) antes do comando. |
+| A página abre, mas mostra "Não foi possível falar com a API" | Confira a mensagem de erro no terminal do servidor. Normalmente é usuário ou senha do banco errados no comando de subir o sistema. |
+| Mudei algo em `web/` e a página não mudou | Recarregue sem cache: `Cmd+Shift+R` (macOS) ou `Ctrl+Shift+R` (Windows). Se mudou o `app.py`, reinicie o servidor. |
+| Acentos quebrados nos dados (Windows) | Faltou `$env:PGCLIENTENCODING = "UTF8"`. Rode de novo o passo 5 inteiro. |
+
+## Publicar na AWS
+
+### Visão geral da infraestrutura
 
 ```
 Navegador ──> S3 (site estático: index.html, app.html)
@@ -42,9 +194,8 @@ Região: **us-east-1**.
 
 Nenhuma senha fica no repositório. A senha do banco é definida no passo 4 e informada só no console (variável de ambiente da Lambda) e no terminal do bastion.
 
----
 
-## 1. VPC e subnets
+### 1. VPC e subnets
 
 Console: **VPC > Your VPCs > Create VPC > VPC only**.
 
@@ -63,7 +214,7 @@ Depois, em **VPC > Subnets > Create subnet**, na `girocerto-vpc`:
 
 Na `subnet-publica-a`: **Actions > Edit subnet settings > Enable auto-assign public IPv4 address**.
 
-## 2. Internet Gateway e tabelas de rota
+### 2. Internet Gateway e tabelas de rota
 
 1. **Internet gateways > Create**: `girocerto-igw`. Depois **Actions > Attach to VPC > girocerto-vpc**.
 2. **Route tables > Create**: `rt-publica` na `girocerto-vpc`.
@@ -78,7 +229,7 @@ Na `subnet-publica-a`: **Actions > Edit subnet settings > Enable auto-assign pub
 
 Não criar NAT Gateway.
 
-## 3. Security Groups
+### 3. Security Groups
 
 **EC2 > Security Groups > Create security group**, todos na `girocerto-vpc`. Crie os três vazios primeiro e depois edite as regras, porque um referencia o outro.
 
@@ -88,7 +239,7 @@ Não criar NAT Gateway.
 | `sg-rds` | PostgreSQL 5432 ← `sg-lambda`; PostgreSQL 5432 ← `sg-bastion` | remover a regra padrão (não precisa de saída) |
 | `sg-bastion` | SSH 22 ← **My IP** (ajustar a cada sessão) | PostgreSQL 5432 → `sg-rds`; HTTPS 443 e HTTP 80 → `0.0.0.0/0` (instalar o `psql`) |
 
-## 4. RDS PostgreSQL
+### 4. RDS PostgreSQL
 
 1. **RDS > Subnet groups > Create DB subnet group**: `girocerto-db-subnets`, VPC `girocerto-vpc`, subnets `subnet-privada-a` e `subnet-privada-b`.
 2. **RDS > Databases > Create database > Standard create**:
@@ -111,7 +262,7 @@ Não criar NAT Gateway.
 
 Quando ficar **Available**, copie o **Endpoint** (aba Connectivity & security). Ele é um nome DNS e não muda entre sessões.
 
-## 5. Bastion e scripts SQL
+### 5. Bastion e scripts SQL
 
 1. **EC2 > Launch instance**:
    - Nome `girocerto-bastion`, Amazon Linux 2023, `t3.micro`.
@@ -148,7 +299,7 @@ psql -c '\dt'
 
 O `psql` pede a senha definida no passo 4. O `01_schema.sql` apaga e recria as tabelas, então rodá-lo de novo zera os dados.
 
-## 6. Lambda `girocerto-crud`
+### 6. Lambda `girocerto-crud`
 
 1. Gere o pacote. O script instala o driver `pg8000` para Linux/Python 3.12, copia o `app.py`, baixa o certificado do RDS (`global-bundle.pem`) e gera `build/crud.zip`. Esses arquivos não vão para o Git.
 
@@ -200,7 +351,7 @@ aws lambda update-function-code --function-name girocerto-crud --zip-file fileb:
 
 Os logs ficam em **CloudWatch > Log groups > /aws/lambda/girocerto-crud**.
 
-## 7. API Gateway
+### 7. API Gateway
 
 1. **API Gateway > Create API > REST API > Build**: nome `girocerto-api`, endpoint Regional.
 2. **Create resource**: marque **Proxy resource**, resource path `/`, resource name `{proxy+}`. Não marque CORS (a própria Lambda responde o `OPTIONS` e envia os cabeçalhos CORS).
@@ -222,7 +373,7 @@ O script cria um cliente e um veículo, consulta, atualiza, tenta excluir o clie
 
 Rotas disponíveis: ver tabela em `specs/design.md`. Nesta entrega estão implementadas as de clientes, veículos, serviços, ordens e itens.
 
-## 8. Front-end no S3
+### 8. Front-end no S3
 
 1. Bucket e hospedagem (só na primeira vez):
 
@@ -264,7 +415,6 @@ aws s3 sync web/ s3://girocerto-web-5j11 --exclude config.example.js
 
 Sem AWS CLI na máquina, os mesmos comandos funcionam no **CloudShell** do console, ou pelo console: S3 > Create bucket > desmarcar "Block all public access" > Permissions > Bucket policy > Properties > Static website hosting > Enable > Upload da pasta `web/` (com o `config.js` gerado).
 
----
 
 ## Ao iniciar uma nova sessão do Learner Lab
 
@@ -275,37 +425,3 @@ Os recursos continuam existindo; só o que é cobrado por hora é parado quando 
 3. **Bastion** (só se precisar rodar SQL): **Instance state > Start**, pegar o **novo IP público** e atualizar a regra SSH do `sg-bastion` para **My IP**.
 
 Nenhum IP está no código: o front usa a URL do API Gateway e a Lambda usa o endpoint DNS do RDS.
-
-## Rodar localmente (opcional)
-
-Para testar sem AWS, com um PostgreSQL e Python 3 na própria máquina. O `scripts/servidor_local.py` faz o papel do API Gateway e do S3. Rode os comandos na pasta raiz do repositório.
-
-### macOS / Linux
-
-PostgreSQL pelo Homebrew (`brew install postgresql@17` e `brew services start postgresql@17`) ou pelo gerenciador de pacotes. O usuário do banco é o do sistema, sem senha.
-
-```bash
-createdb girocerto
-psql -d girocerto -f sql/01_schema.sql -f sql/02_seed.sql
-pip3 install -r backend/crud/requirements.txt
-DB_HOST=127.0.0.1 DB_USER=$(whoami) DB_PASSWORD=x DB_SSL=off python3 scripts/servidor_local.py
-```
-
-### Windows (PowerShell)
-
-PostgreSQL pelo instalador oficial (postgresql.org). O usuário é `postgres`, com a senha escolhida na instalação. Se o terminal não achar `psql`/`createdb`, adicione `C:\Program Files\PostgreSQL\17\bin` ao PATH.
-
-```powershell
-$env:PGCLIENTENCODING = "UTF8"   # sem isso os acentos do seed ficam quebrados
-createdb -U postgres girocerto
-psql -U postgres -d girocerto -f sql/01_schema.sql -f sql/02_seed.sql
-py -m pip install -r backend/crud/requirements.txt
-$env:DB_HOST = "127.0.0.1"; $env:DB_USER = "postgres"; $env:DB_PASSWORD = "<senha-do-postgres>"; $env:DB_SSL = "off"
-py scripts/servidor_local.py
-```
-
-### Depois de subir o servidor
-
-Abra `http://localhost:8765/app.html`. Para parar, `Ctrl+C`. Depois de mudar algo em `web/` ou no `app.py`, reinicie o servidor e recarregue a página com `Ctrl+Shift+R` (Windows) ou `Cmd+Shift+R` (macOS).
-
-Para testar a API pelo terminal (macOS, Linux ou Git Bash): `./scripts/testar-api.sh http://localhost:8765/api`.
