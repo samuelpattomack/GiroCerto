@@ -1,23 +1,43 @@
 """Servidor para testar o GiroCerto na própria máquina, sem AWS.
 
-Faz o papel do API Gateway (/api/* chama o handler da Lambda crud) e do
-bucket S3 (serve a pasta web/). Uso:
+Faz o papel do API Gateway (/api/relatorios/* chama a Lambda relatorios e o
+resto de /api/* a Lambda crud) e do bucket S3 (serve a pasta web/). O upload
+de anexos precisa do S3 de verdade e só funciona na AWS. Uso:
 
     DB_HOST=127.0.0.1 DB_USER=$(whoami) DB_PASSWORD=x DB_SSL=off python3 scripts/servidor_local.py
 
 Depois abra http://localhost:8765/app.html
 """
 
+import importlib.util
 import os
 import sys
+import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qsl, urlsplit
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(REPO, "backend", "crud"))
-import app  # noqa: E402
+sys.path.insert(0, os.path.join(REPO, "backend", "comum"))
+
+
+def carregar(funcao):
+    # As Lambdas têm todas um app.py; carrega cada uma com nome próprio
+    caminho = os.path.join(REPO, "backend", funcao, "app.py")
+    spec = importlib.util.spec_from_file_location(f"lambda_{funcao}", caminho)
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+crud = carregar("crud")
+relatorios = carregar("relatorios")
 
 PORTA = int(os.environ.get("PORTA", "8765"))
+
+# Cada Lambda atende uma requisição por vez e reaproveita uma única conexão
+# com o banco. O servidor é multithread, então serializa as chamadas para
+# não usar a mesma conexão em duas requisições ao mesmo tempo.
+TRAVA_LAMBDA = threading.Lock()
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -43,7 +63,10 @@ class Handler(SimpleHTTPRequestHandler):
             "queryStringParameters": dict(parse_qsl(url.query)) or None,
             "body": self.rfile.read(tamanho).decode() if tamanho else None,
         }
-        resp = app.handler(evento, None)
+        # Como no API Gateway: /relatorios/* vai para a Lambda relatorios
+        lambda_ = relatorios if url.path.startswith("/api/relatorios/") else crud
+        with TRAVA_LAMBDA:
+            resp = lambda_.handler(evento, None)
         self.send_response(resp["statusCode"])
         for chave, valor in resp["headers"].items():
             self.send_header(chave, valor)

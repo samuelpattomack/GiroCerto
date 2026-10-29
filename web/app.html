@@ -18,6 +18,9 @@
     <nav>
       <a href="#clientes" data-aba="clientes">Clientes</a>
       <a href="#veiculos" data-aba="veiculos">Veículos</a>
+      <a href="#servicos" data-aba="servicos">Serviços</a>
+      <a href="#ordens" data-aba="ordens">Ordens</a>
+      <a href="#relatorios" data-aba="relatorios">Relatórios</a>
     </nav>
   </div>
 </header>
@@ -70,6 +73,93 @@
     <table class="tabela">
       <thead><tr><th>ID</th><th>Placa</th><th>Marca / modelo</th><th>Ano</th><th>Cliente</th><th></th></tr></thead>
       <tbody id="lista-veiculos"></tbody>
+    </table>
+  </section>
+
+  <section id="aba-servicos" class="aba" hidden>
+    <div class="cab">
+      <h2>Catálogo de serviços</h2>
+    </div>
+
+    <form id="form-servico" class="form">
+      <input type="hidden" name="id">
+      <label>Nome *<input name="nome" required maxlength="120"></label>
+      <label>Categoria *
+        <select name="categoria" required>
+          <option value="REVISAO">Revisão</option>
+          <option value="MOTOR">Motor</option>
+          <option value="FREIO">Freio</option>
+          <option value="SUSPENSAO">Suspensão</option>
+          <option value="ELETRICA">Elétrica</option>
+          <option value="OUTROS">Outros</option>
+        </select>
+      </label>
+      <label>Preço de referência (R$) *<input name="precoReferencia" type="number" required min="0.01" step="0.01"></label>
+      <label class="check"><input name="ativo" type="checkbox" checked> Ativo</label>
+      <div class="acoes">
+        <button type="submit" class="botao">Salvar serviço</button>
+        <button type="reset" class="botao sec">Limpar</button>
+      </div>
+    </form>
+
+    <table class="tabela">
+      <thead><tr><th>ID</th><th>Serviço</th><th>Categoria</th><th>Preço</th><th>Situação</th><th></th></tr></thead>
+      <tbody id="lista-servicos"></tbody>
+    </table>
+  </section>
+
+  <section id="aba-ordens" class="aba" hidden>
+    <div class="cab">
+      <h2>Ordens de serviço</h2>
+      <select id="filtro-status">
+        <option value="">Todos os status</option>
+        <option value="ABERTA">Aberta</option>
+        <option value="EM_ANDAMENTO">Em andamento</option>
+        <option value="CONCLUIDA">Concluída</option>
+        <option value="CANCELADA">Cancelada</option>
+      </select>
+    </div>
+
+    <form id="form-ordem" class="form">
+      <label>Veículo *<select name="veiculoId" required></select></label>
+      <label>Quilometragem *<input name="quilometragem" type="number" required min="0"></label>
+      <label class="largo">Problema relatado *<input name="descricao" required maxlength="2000"></label>
+      <div class="acoes">
+        <button type="submit" class="botao">Abrir ordem</button>
+      </div>
+    </form>
+
+    <div id="detalhe-ordem" class="detalhe" hidden></div>
+
+    <table class="tabela">
+      <thead><tr><th>Nº</th><th>Entrada</th><th>Veículo</th><th>Cliente</th><th>Status</th><th>Total</th><th></th></tr></thead>
+      <tbody id="lista-ordens"></tbody>
+    </table>
+  </section>
+
+  <section id="aba-relatorios" class="aba" hidden>
+    <div class="cab">
+      <h2>Relatórios</h2>
+      <form id="form-relatorio" class="filtro-datas">
+        <label>De <input name="inicio" type="date" required></label>
+        <label>Até <input name="fim" type="date" required></label>
+        <button type="submit" class="botao">Atualizar</button>
+      </form>
+    </div>
+    <p class="muted">Considera apenas ordens concluídas, pela data de saída.</p>
+
+    <div class="resumo" id="resumo-faturamento"></div>
+
+    <h3 class="sub">Faturamento por mês</h3>
+    <table class="tabela">
+      <thead><tr><th>Mês</th><th>Ordens concluídas</th><th>Faturado</th><th class="col-barra"></th></tr></thead>
+      <tbody id="lista-faturamento"></tbody>
+    </table>
+
+    <h3 class="sub">Serviços mais realizados (top 10)</h3>
+    <table class="tabela">
+      <thead><tr><th>#</th><th>Serviço</th><th>Categoria</th><th>Quantidade</th><th>Ordens</th><th>Receita</th></tr></thead>
+      <tbody id="lista-top-servicos"></tbody>
     </table>
   </section>
 

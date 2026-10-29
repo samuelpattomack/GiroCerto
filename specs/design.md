@@ -4,9 +4,9 @@
 
 ```mermaid
 flowchart LR
-    U[Navegador] -->|HTTPS| S3W[S3 site estático<br/>girocerto-web]
+    U[Navegador] -->|HTTPS| S3W[S3 site estático<br/>girocerto-web-5j11]
     U -->|HTTPS + CORS| APIGW[API Gateway<br/>REST]
-    U -->|PUT URL pré-assinada| S3A[S3 anexos<br/>girocerto-anexos]
+    U -->|PUT URL pré-assinada| S3A[S3 anexos privado<br/>girocerto-anexos-5j11]
 
     subgraph VPC [VPC 10.0.0.0/16]
         IGW[Internet Gateway]
@@ -40,11 +40,15 @@ flowchart LR
 
 Fluxo principal:
 
-1. O front é servido pelo bucket `girocerto-web-5j11` com hospedagem de site estático (`index.html` é a landing page e `app.html` a tela de cadastros).
+1. O front é servido pelo bucket `girocerto-web-5j11` com hospedagem de site estático (`index.html` é a landing page e `app.html` o sistema).
 2. O front chama a API no API Gateway, que encaminha para a Lambda `crud` (recurso `/{proxy+}`) ou `relatorios` (recurso `/relatorios/{proxy+}`, que tem precedência por ser mais específico).
 3. As Lambdas rodam nas subnets privadas e acessam o RDS pelo endpoint DNS.
-4. Para anexar um arquivo, o front pede `POST /ordens/{id}/anexos/upload-url`, recebe a URL pré-assinada e faz o PUT direto no bucket `girocerto-anexos`.
-5. O evento `ObjectCreated` em `uploads/` dispara a Lambda `processa-anexo`, que acessa o S3 pelo Gateway Endpoint (sem NAT), gera a miniatura e grava os metadados no RDS.
+4. Para anexar um arquivo, o front pede `POST /ordens/{id}/anexos/upload-url`. A Lambda `crud` registra o anexo como `PENDENTE`, gera a URL pré-assinada e o navegador faz o PUT direto no bucket `girocerto-anexos-5j11`, na chave `uploads/ordens/{id}/{uuid}.{ext}`.
+5. O evento `ObjectCreated` em `uploads/` dispara a Lambda `processa-anexo`, que acessa o S3 pelo Gateway Endpoint (sem NAT), confere tipo e tamanho, gera a miniatura em `thumbs/` (se for imagem) e grava tamanho, dimensões, chave da miniatura e situação (`PROCESSADO` ou `ERRO`) no RDS. Cada etapa vai para o CloudWatch Logs.
+6. O front consulta `GET /ordens/{id}/anexos` a cada 3 segundos, por até 1 minuto, até o anexo sair de `PENDENTE`. Como o bucket é privado, essa rota devolve URLs pré-assinadas de leitura (1 hora) para o original e a miniatura.
+7. Os relatórios (`/relatorios/...`) são uma Lambda separada, que só lê o banco.
+
+As Lambdas `relatorios` e `processa-anexo` usam o módulo `backend/comum/banco.py` para a conexão; o `scripts/empacotar.sh` coloca esse arquivo em cada `.zip`.
 
 Todas as Lambdas usam a `LabRole`. Não há NAT Gateway.
 
@@ -188,18 +192,39 @@ Os campos do JSON usam camelCase (`clienteId`, `precoReferencia`, `valorUnitario
 
 O schema está em `sql/01_schema.sql` e os dados de exemplo em `sql/02_seed.sql`.
 
-Exemplo de consulta do relatório de faturamento:
+`POST /ordens/{id}/anexos/upload-url` recebe `{"nomeArquivo", "tipo", "tamanho"}` (JPG, PNG ou PDF, até 10 MB) e devolve `{"anexo", "uploadUrl", "headers"}`. O navegador faz o PUT em `uploadUrl` com o `Content-Type` de `headers`. Sem a variável `ANEXOS_BUCKET` (teste local), responde 503.
+
+Os relatórios aceitam `inicio` e `fim` no formato `AAAA-MM-DD`; sem eles, usam os últimos 12 meses completos. Só contam ordens `CONCLUIDA`, pela `data_saida`. `faturamento-mensal` devolve `meses` (mês, ordens, total), `totalOrdens` e `totalFaturado`; `servicos-mais-realizados` devolve até 10 `servicos` com quantidade, número de ordens e receita.
+
+Consulta do relatório de faturamento (`backend/relatorios/app.py`):
 
 ```sql
-SELECT date_trunc('month', o.data_saida) AS mes,
+SELECT to_char(date_trunc('month', o.data_saida), 'YYYY-MM') AS mes,
        COUNT(DISTINCT o.id) AS ordens,
        SUM(i.quantidade * i.valor_unitario) AS total
 FROM ordem_servico o
 JOIN item_ordem i ON i.ordem_id = o.id
 WHERE o.status = 'CONCLUIDA'
   AND o.data_saida BETWEEN :inicio AND :fim
-GROUP BY mes
+GROUP BY date_trunc('month', o.data_saida)
 ORDER BY mes;
+```
+
+Consulta dos serviços mais realizados:
+
+```sql
+SELECT s.id, s.nome, s.categoria,
+       SUM(i.quantidade) AS quantidade,
+       COUNT(DISTINCT o.id) AS ordens,
+       SUM(i.quantidade * i.valor_unitario) AS receita
+FROM item_ordem i
+JOIN servico s ON s.id = i.servico_id
+JOIN ordem_servico o ON o.id = i.ordem_id
+WHERE o.status = 'CONCLUIDA'
+  AND o.data_saida BETWEEN :inicio AND :fim
+GROUP BY s.id, s.nome, s.categoria
+ORDER BY quantidade DESC, receita DESC
+LIMIT 10;
 ```
 
 ## ADRs
@@ -248,6 +273,8 @@ ORDER BY mes;
 
 **Motivos.** O API Gateway limita o corpo da requisição a 10 MB e a Lambda a 6 MB de payload síncrono; passar o arquivo pela API não funcionaria para fotos maiores. Também evita gastar tempo de Lambda transferindo bytes.
 
+**Consequências.** Uma URL de PUT não limita o tamanho do arquivo. A API recusa pedidos acima de 10 MB pelo tamanho informado, e a Lambda `processa-anexo` confere o tamanho real e marca `ERRO` se passar do limite. O bucket fica privado, e a leitura também é por URL pré-assinada (de GET, válida por 1 hora). O bucket precisa de CORS liberando PUT e GET para a origem do site.
+
 ### ADR-004 - Front-end
 
 **Status:** aceito
@@ -271,3 +298,23 @@ ORDER BY mes;
 **Decisão.** Um único recurso `/{proxy+}` com método `ANY` e integração proxy para a Lambda `crud`, que faz o roteamento internamente. A Lambda também responde o `OPTIONS` com os cabeçalhos CORS.
 
 **Motivos.** Criar pelo console um recurso e um método para cada uma das 21 rotas de CRUD tomaria tempo e seria fácil de errar ao recriar (RNF-05). Com o proxy, o API Gateway tem um único método, e as rotas ficam versionadas no código. A desvantagem é que o API Gateway não valida os caminhos, então a Lambda devolve 404 e 405 por conta própria.
+
+### ADR-007 - Miniatura na Lambda com Pillow, separada por prefixo
+
+**Status:** aceito
+
+**Decisão.** A Lambda `processa-anexo` usa a biblioteca Pillow para ler as dimensões e gerar uma miniatura JPEG de até 320 px. Os originais ficam em `uploads/` e as miniaturas em `thumbs/`, e o evento do bucket só dispara para `uploads/`. Memória de 512 MB e timeout de 30 s.
+
+**Motivos.** A Pillow tem binário pronto para Linux (manylinux), então entra no `.zip` sem compilar, como o `pg8000` (ADR-005). Separar os prefixos impede que a miniatura gravada pela Lambda dispare a própria Lambda em loop. Uma foto de celular aberta em memória passa de 100 MB, por isso a memória maior que a das outras Lambdas.
+
+**Consequências.** O pacote da `processa-anexo` tem cerca de 5 MB, contra 750 KB das outras. PDFs não têm miniatura; o front mostra o texto "PDF" no lugar. Se a gravação no banco falhar, a invocação assíncrona do S3 tenta de novo duas vezes, e o anexo fica `PENDENTE` até lá.
+
+### ADR-008 - Relatórios numa Lambda separada
+
+**Status:** aceito
+
+**Decisão.** Os relatórios ficam na Lambda `relatorios`, ligada ao recurso `/relatorios/{proxy+}`, e não na `crud`.
+
+**Motivos.** O RF-04 pede o relatório implementado em Lambda atrás do API Gateway. Separar deixa a `crud` só com escrita e leitura simples, e permite dar a cada função timeout e logs próprios. As consultas usam JOIN de três tabelas e GROUP BY, e só leem dados.
+
+**Consequências.** Duas funções precisam das mesmas variáveis de banco. A conexão comum fica em `backend/comum/banco.py` para não duplicar código.

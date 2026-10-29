@@ -43,16 +43,16 @@ Responsáveis: **LB** = Lucas Zeferino Baracat, **SP** = Samuel Patto Marcondes 
 
 | ID | Tarefa | Requisito | Resp. | Status |
 |----|--------|-----------|-------|--------|
-| T-26 | Bucket `girocerto-anexos` com CORS para PUT do site | RF-02 | SP | A fazer |
-| T-27 | Rota `POST /ordens/{id}/anexos/upload-url` gerando URL pré-assinada | RF-02, HU-05 | LB | A fazer |
-| T-28 | Rota `GET /ordens/{id}/anexos` com URL de leitura | HU-05 | LB | A fazer |
-| T-29 | Gateway Endpoint do S3 na `rt-privada` | RF-03 | LB | A fazer |
-| T-30 | Lambda `processa-anexo`: metadados, miniatura e gravação no RDS | RF-03 | SP | A fazer |
-| T-31 | Evento `ObjectCreated` em `uploads/` disparando a Lambda, com log no CloudWatch | RF-03 | SP | A fazer |
-| T-32 | Lambda `relatorios` com faturamento mensal e top 10 serviços (JOIN/GROUP BY) | RF-04, HU-06 | LB | A fazer |
-| T-33 | Recurso `/relatorios/{proxy+}` no API Gateway | RF-04 | LB | A fazer |
-| T-34 | Telas de serviços, ordens, anexos e relatórios no front | RF-05 | SP | A fazer |
-| T-35 | Revisar `design.md` para refletir o que está rodando | - | LB, SP | A fazer |
+| T-26 | Bucket `girocerto-anexos` com CORS para PUT do site | RF-02 | SP | Concluída |
+| T-27 | Rota `POST /ordens/{id}/anexos/upload-url` gerando URL pré-assinada | RF-02, HU-05 | LB | Concluída |
+| T-28 | Rota `GET /ordens/{id}/anexos` com URL de leitura | HU-05 | LB | Concluída |
+| T-29 | Gateway Endpoint do S3 na `rt-privada` | RF-03 | LB | Concluída |
+| T-30 | Lambda `processa-anexo`: metadados, miniatura e gravação no RDS | RF-03 | SP | Concluída |
+| T-31 | Evento `ObjectCreated` em `uploads/` disparando a Lambda, com log no CloudWatch | RF-03 | SP | Concluída |
+| T-32 | Lambda `relatorios` com faturamento mensal e top 10 serviços (JOIN/GROUP BY) | RF-04, HU-06 | LB | Concluída |
+| T-33 | Recurso `/relatorios/{proxy+}` no API Gateway | RF-04 | LB | Concluída |
+| T-34 | Telas de serviços, ordens, anexos e relatórios no front | RF-05 | SP | Concluída |
+| T-35 | Revisar `design.md` para refletir o que está rodando | - | LB, SP | Concluída |
 
 ## Entrega final (06/11)
 

@@ -152,3 +152,28 @@ O clique funcionava, mas a tela não mostrava que estava editando. A IA destacou
 
 **O que aconteceu**
 Os comandos do README eram só de macOS/Linux. A IA acrescentou as versões para Windows (PowerShell, `icacls` para a chave do bastion e o CloudShell para gerar o .zip da Lambda).
+
+## 29/10 - Entrega 4 (anexos, Lambda de evento, relatório e front)
+
+Ferramenta: Claude Code, com `specs/spec.md`, `specs/design.md`, `specs/tasks.md` e o enunciado como contexto. A infraestrutura da entrega 3 já estava rodando na AWS.
+
+**Prompt real**
+> Pode fazer a entrega do dia 30 também.
+
+**O que a IA gerou**
+- Na Lambda `crud`, as rotas `POST /ordens/{id}/anexos/upload-url` (registra o anexo como `PENDENTE` e devolve a URL pré-assinada de PUT) e `GET /ordens/{id}/anexos` (devolve URLs pré-assinadas de leitura) (RF-02).
+- A Lambda `processa-anexo`, disparada pelo evento do S3 em `uploads/`: confere tipo e tamanho, gera a miniatura em `thumbs/` com a biblioteca Pillow e grava o resultado na tabela `anexo` (RF-03).
+- A Lambda `relatorios`, com faturamento mensal e top 10 serviços usando JOIN e GROUP BY (RF-04).
+- No front, as abas Serviços, Ordens (itens, status e envio de fotos com acompanhamento da miniatura) e Relatórios (RF-05).
+- O `scripts/empacotar.sh` para as três Lambdas, o módulo comum `backend/comum/banco.py`, os passos 9 a 11 do README e os ADR-007 e ADR-008.
+
+**Decisões que a IA propôs**
+- Prefixos separados `uploads/` e `thumbs/`, com o evento só em `uploads/`, para a miniatura não disparar a própria Lambda em loop (ADR-007).
+- Bucket de anexos privado, com leitura também por URL pré-assinada, em vez de deixar as fotos públicas.
+- Como a URL de PUT não limita o tamanho, a Lambda confere o tamanho real e marca `ERRO` acima de 10 MB.
+- Relatórios numa Lambda separada, com recurso próprio no API Gateway (ADR-008).
+
+**Problemas encontrados no teste**
+- A IA testou as três Lambdas contra um PostgreSQL local, com o S3 simulado na `processa-anexo`: foto de 1600x900 virou miniatura de 320x180, um arquivo que não era imagem ficou `ERRO` e um arquivo fora da tabela foi ignorado.
+- Ao testar a tela, a lista de ordens deu erro 500 com a mensagem `bind message supplies 2 parameters`. A causa era o servidor local: ele atende várias requisições ao mesmo tempo e todas usavam a mesma conexão com o banco, e a tela nova faz chamadas em paralelo. Na AWS isso não acontece, porque cada instância de Lambda atende uma requisição por vez. A correção foi o servidor local executar uma chamada de Lambda por vez.
+- A mensagem "Ordem de serviço não encontrado" foi corrigida para o feminino, e os status passaram a aparecer com acento na tela ("Concluída").

@@ -1,9 +1,10 @@
-"""Lambda crud do GiroCerto (RF-01).
+"""Lambda crud do GiroCerto (RF-01 e RF-02).
 
 Recebe as requisições do API Gateway (REST, integração proxy em /{proxy+})
 e roteia pelo método e caminho. Entidades: clientes, veiculos, servicos e
-ordens (com itens). Conexão com o RDS configurada por variáveis de ambiente:
-DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD.
+ordens (com itens e anexos). Conexão com o RDS configurada por variáveis de
+ambiente: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD. Os anexos usam o
+bucket da variável ANEXOS_BUCKET.
 """
 
 import datetime
@@ -12,6 +13,7 @@ import json
 import os
 import re
 import ssl
+import uuid
 
 import pg8000.native
 from pg8000.exceptions import DatabaseError, InterfaceError
@@ -170,7 +172,8 @@ def opcao(dados, campo, opcoes):
 def buscar_ou_404(query, nome, **params):
     linha = um(query, **params)
     if linha is None:
-        raise ErroApi(404, f"{nome} não encontrado.")
+        feminino = nome.startswith("Ordem")
+        raise ErroApi(404, f"{nome} não encontrad{'a' if feminino else 'o'}.")
     return linha
 
 
@@ -473,6 +476,65 @@ def remover_item(ordem_id, servico_id):
     return 204, None
 
 
+# ---------- anexos (HU-05, RF-02) ----------
+
+TIPOS_ANEXO = {"image/jpeg": "jpg", "image/png": "png", "application/pdf": "pdf"}
+TAMANHO_MAXIMO = 10 * 1024 * 1024
+
+
+def cliente_s3():
+    # boto3 já vem no runtime da Lambda; importado aqui para o CRUD rodar
+    # localmente sem ele. Gerar URL pré-assinada não usa rede.
+    import boto3
+    from botocore.config import Config
+    return boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-east-1"),
+                        config=Config(signature_version="s3v4"))
+
+
+def gerar_upload_url(ordem_id, d):
+    buscar_ou_404("SELECT id FROM ordem_servico WHERE id = :id", "Ordem de serviço", id=ordem_id)
+    nome = texto(d, "nomeArquivo", maximo=200)
+    tipo = (texto(d, "tipo", maximo=60) or "").lower()
+    if tipo not in TIPOS_ANEXO:
+        raise ErroApi(400, "Só são aceitos arquivos JPG, PNG e PDF.")
+    tamanho = inteiro(d, "tamanho", minimo=1)
+    if tamanho > TAMANHO_MAXIMO:
+        raise ErroApi(400, "O arquivo deve ter no máximo 10 MB.")
+    bucket = os.environ.get("ANEXOS_BUCKET")
+    if not bucket:
+        raise ErroApi(503, "Upload de anexos não configurado (variável ANEXOS_BUCKET).")
+
+    chave = f"uploads/ordens/{ordem_id}/{uuid.uuid4().hex}.{TIPOS_ANEXO[tipo]}"
+    # Válida por 5 minutos e só para este Content-Type (ADR-003)
+    url = cliente_s3().generate_presigned_url(
+        "put_object", Params={"Bucket": bucket, "Key": chave, "ContentType": tipo}, ExpiresIn=300,
+    )
+    # A Lambda processa-anexo muda a situação para PROCESSADO ou ERRO (RF-03)
+    anexo = um(
+        """INSERT INTO anexo (ordem_id, chave_s3, nome_original, tipo, tamanho_bytes)
+           VALUES (:ordem_id, :chave, :nome, :tipo, :tamanho) RETURNING *""",
+        ordem_id=ordem_id, chave=chave, nome=nome, tipo=tipo, tamanho=tamanho,
+    )
+    return 201, {"anexo": anexo, "uploadUrl": url, "headers": {"Content-Type": tipo}}
+
+
+def listar_anexos(ordem_id):
+    buscar_ou_404("SELECT id FROM ordem_servico WHERE id = :id", "Ordem de serviço", id=ordem_id)
+    anexos = sql("SELECT * FROM anexo WHERE ordem_id = :id ORDER BY enviado_em, id", id=ordem_id)
+    bucket = os.environ.get("ANEXOS_BUCKET")
+    s3 = cliente_s3() if bucket and anexos else None
+    for a in anexos:
+        # O bucket é privado: o navegador lê por URLs de leitura temporárias
+        a["url"] = a["urlMiniatura"] = None
+        if s3:
+            a["url"] = s3.generate_presigned_url(
+                "get_object", Params={"Bucket": bucket, "Key": a["chaveS3"]}, ExpiresIn=3600)
+            if a["chaveMiniatura"]:
+                a["urlMiniatura"] = s3.generate_presigned_url(
+                    "get_object", Params={"Bucket": bucket, "Key": a["chaveMiniatura"]}, ExpiresIn=3600)
+    return 200, anexos
+
+
 # ---------- roteamento ----------
 
 ROTAS = [
@@ -497,6 +559,8 @@ ROTAS = [
     ("DELETE", r"ordens/(\d+)", lambda m, q, d: excluir_ordem(int(m[1]))),
     ("POST", r"ordens/(\d+)/itens", lambda m, q, d: adicionar_item(int(m[1]), d)),
     ("DELETE", r"ordens/(\d+)/itens/(\d+)", lambda m, q, d: remover_item(int(m[1]), int(m[2]))),
+    ("POST", r"ordens/(\d+)/anexos/upload-url", lambda m, q, d: gerar_upload_url(int(m[1]), d)),
+    ("GET", r"ordens/(\d+)/anexos", lambda m, q, d: listar_anexos(int(m[1]))),
 ]
 
 # Mensagens para violações de restrição do banco (SQLSTATE)

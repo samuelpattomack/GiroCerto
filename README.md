@@ -19,12 +19,15 @@ Sistema de gestão para oficinas mecânicas. Projeto 2 de Computação em Nuvem,
 | `docs/ia-log.md` | Registro do uso do Copilot |
 | `sql/01_schema.sql` | Criação das tabelas no RDS |
 | `sql/02_seed.sql` | Dados de exemplo |
-| `backend/crud/app.py` | Lambda `girocerto-crud` (RF-01) |
-| `scripts/empacotar-crud.sh` | Gera o `.zip` da Lambda |
+| `backend/crud/app.py` | Lambda `girocerto-crud`: CRUD e URLs pré-assinadas dos anexos (RF-01, RF-02) |
+| `backend/processa_anexo/app.py` | Lambda `girocerto-processa-anexo`: miniatura e metadados de cada arquivo novo no S3 (RF-03) |
+| `backend/relatorios/app.py` | Lambda `girocerto-relatorios`: faturamento mensal e serviços mais realizados (RF-04) |
+| `backend/comum/banco.py` | Conexão com o RDS usada pelas Lambdas `relatorios` e `processa-anexo` |
+| `scripts/empacotar.sh` | Gera o `.zip` de cada Lambda |
 | `scripts/testar-api.sh` | Percorre o CRUD de clientes e veículos com `curl` |
 | `scripts/servidor_local.py` | Simula API Gateway e S3 para testar na máquina |
 | `web/index.html` | Landing page |
-| `web/app.html` | Tela de cadastro de clientes e veículos |
+| `web/app.html` | Sistema: clientes, veículos, serviços, ordens com anexos e relatórios (RF-05) |
 
 ## Como usar este README
 
@@ -160,6 +163,10 @@ Em `http://localhost:8765/app.html`:
 2. Na aba **Veículos**, cadastre um veículo para esse cliente (placa no formato `ABC1234` ou `ABC1D23`).
 3. Tente excluir o cliente: o sistema bloqueia, porque ele tem veículo.
 4. Exclua o veículo e depois o cliente.
+5. Em **Serviços**, desative um serviço. Em **Ordens**, abra uma ordem, adicione serviços e mude o status para **Concluída**: a ordem deixa de aceitar alterações.
+6. Em **Relatórios**, veja o faturamento por mês e os serviços mais realizados.
+
+O envio de fotos e PDFs precisa do S3 de verdade e só funciona na AWS (passo 10). Localmente, a tela mostra "Upload de anexos não configurado".
 
 A landing page fica em `http://localhost:8765/index.html`. Para testar a API pelo terminal (macOS, ou Git Bash no Windows), com o servidor rodando em outra janela: `./scripts/testar-api.sh http://localhost:8765/api`.
 
@@ -174,6 +181,7 @@ A landing page fica em `http://localhost:8765/index.html`. Para testar a API pel
 | `Address already in use` / porta 8765 ocupada | Já tem um servidor aberto em outra janela. Feche-o com `Ctrl+C` ou use outra porta: `PORTA=8766` (macOS) ou `$env:PORTA = "8766"` (Windows) antes do comando. |
 | A página abre, mas mostra "Não foi possível falar com a API" | Confira a mensagem de erro no terminal do servidor. Normalmente é usuário ou senha do banco errados no comando de subir o sistema. |
 | Mudei algo em `web/` e a página não mudou | Recarregue sem cache: `Cmd+Shift+R` (macOS) ou `Ctrl+Shift+R` (Windows). Se mudou o `app.py`, reinicie o servidor. |
+| "Upload de anexos não configurado" | Esperado no teste local. O upload só funciona na AWS (passo 10). |
 | Acentos quebrados nos dados (Windows) | Faltou `$env:PGCLIENTENCODING = "UTF8"`. Rode de novo o passo 5 inteiro. |
 
 ## Publicar na AWS
@@ -181,10 +189,16 @@ A landing page fica em `http://localhost:8765/index.html`. Para testar a API pel
 ### Visão geral da infraestrutura
 
 ```
-Navegador ──> S3 (site estático: index.html, app.html)
+Navegador ──> S3 girocerto-web-5j11 (site estático: index.html, app.html)
     │
-    └──> API Gateway (REST, stage prod) ──> Lambda girocerto-crud ──> RDS PostgreSQL
-                                             (subnets privadas)        (subnets privadas)
+    ├──> API Gateway (REST, stage prod)
+    │       ├── /{proxy+}             ──> Lambda girocerto-crud ───────┐
+    │       └── /relatorios/{proxy+}  ──> Lambda girocerto-relatorios ─┼──> RDS PostgreSQL
+    │                                     (subnets privadas)          │    (subnets privadas)
+    └──PUT (URL pré-assinada)──> S3 girocerto-anexos-5j11 (privado)   │
+                                    │ evento ObjectCreated uploads/   │
+                                    └──> Lambda girocerto-processa-anexo ──┘
+                                         (lê o original e grava thumbs/ pelo Gateway Endpoint)
 EC2 bastion (subnet pública) ──5432──> RDS   (só para rodar os scripts SQL)
 ```
 
@@ -301,12 +315,12 @@ O `psql` pede a senha definida no passo 4. O `01_schema.sql` apaga e recria as t
 
 ### 6. Lambda `girocerto-crud`
 
-1. Gere o pacote. O script instala o driver `pg8000` para Linux/Python 3.12, copia o `app.py`, baixa o certificado do RDS (`global-bundle.pem`) e gera `build/crud.zip`. Esses arquivos não vão para o Git.
+1. Gere os pacotes das três Lambdas. O script instala as dependências para Linux/Python 3.12 (`pg8000` e, na `processa_anexo`, `Pillow`), copia o código, baixa o certificado do RDS (`global-bundle.pem`) e gera `build/crud.zip`, `build/relatorios.zip` e `build/processa_anexo.zip`. Esses arquivos não vão para o Git. Para gerar só um: `./scripts/empacotar.sh crud`.
 
    **macOS / Linux** (precisa de Python 3 com `pip3`, `curl` e `zip`):
 
 ```bash
-./scripts/empacotar-crud.sh
+./scripts/empacotar.sh
 ```
 
    **Windows:** o script é bash e o Git Bash não traz o `zip`. Rode no **AWS CloudShell** (ícone `>_` no topo do console), que é Linux e já tem tudo:
@@ -314,10 +328,10 @@ O `psql` pede a senha definida no passo 4. O `01_schema.sql` apaga e recria as t
 ```bash
 git clone https://github.com/samuelpattomack/GiroCerto.git
 cd GiroCerto
-./scripts/empacotar-crud.sh
+./scripts/empacotar.sh
 ```
 
-   Depois, no CloudShell, **Actions > Download file** com o caminho `GiroCerto/build/crud.zip`. Também é possível enviar o zip direto para a Lambda pelo próprio CloudShell, depois de criá-la no passo 2:
+   Depois, no CloudShell, **Actions > Download file** com o caminho `GiroCerto/build/crud.zip` (e os outros dois `.zip`). Também é possível enviar o zip direto para a Lambda pelo próprio CloudShell, depois de criá-la no passo 2:
 
 ```bash
 aws lambda update-function-code --function-name girocerto-crud --zip-file fileb://build/crud.zip
@@ -342,6 +356,7 @@ aws lambda update-function-code --function-name girocerto-crud --zip-file fileb:
 | `DB_NAME` | `girocerto` |
 | `DB_USER` | `girocerto_admin` |
 | `DB_PASSWORD` | senha do passo 4 |
+| `ANEXOS_BUCKET` | `girocerto-anexos-5j11` (bucket do passo 10; pode ser adicionada depois) |
 
 6. Teste em **Test** com o evento abaixo; deve voltar `statusCode: 200` e a lista de clientes:
 
@@ -371,7 +386,7 @@ curl https://<api-id>.execute-api.us-east-1.amazonaws.com/prod/clientes
 
 O script cria um cliente e um veículo, consulta, atualiza, tenta excluir o cliente com veículo (deve dar 409) e depois exclui os dois. No Windows, rode-o no CloudShell ou no Git Bash. O `curl` simples funciona também no PowerShell (`curl.exe ...`).
 
-Rotas disponíveis: ver tabela em `specs/design.md`. Nesta entrega estão implementadas as de clientes, veículos, serviços, ordens e itens.
+Rotas disponíveis: ver tabela em `specs/design.md`.
 
 ### 8. Front-end no S3
 
@@ -411,17 +426,96 @@ $API_URL = "https://<api-id>.execute-api.us-east-1.amazonaws.com/prod"
 aws s3 sync web/ s3://girocerto-web-5j11 --exclude config.example.js
 ```
 
-3. Acesse `http://girocerto-web-5j11.s3-website-us-east-1.amazonaws.com` (landing) e `.../app.html` (cadastros).
+3. Acesse `http://girocerto-web-5j11.s3-website-us-east-1.amazonaws.com` (landing) e `.../app.html` (sistema).
 
 Sem AWS CLI na máquina, os mesmos comandos funcionam no **CloudShell** do console, ou pelo console: S3 > Create bucket > desmarcar "Block all public access" > Permissions > Bucket policy > Properties > Static website hosting > Enable > Upload da pasta `web/` (com o `config.js` gerado).
 
+
+### 9. Lambda `girocerto-relatorios` (RF-04)
+
+1. **Lambda > Create function**, igual ao passo 6.2, com nome `girocerto-relatorios` (Python 3.12, `LabRole`, VPC `girocerto-vpc`, subnets privadas, `sg-lambda`).
+2. **Code > Upload from > .zip file** > `build/relatorios.zip`. Handler `app.handler`. Memória 256 MB, timeout 15 s.
+3. **Environment variables**: as mesmas `DB_HOST`, `DB_NAME`, `DB_USER` e `DB_PASSWORD` da `girocerto-crud`.
+4. Teste com o evento:
+
+```json
+{ "httpMethod": "GET", "path": "/relatorios/faturamento-mensal", "pathParameters": { "proxy": "faturamento-mensal" }, "queryStringParameters": { "inicio": "2026-01-01", "fim": "2026-12-31" } }
+```
+
+5. No **API Gateway** `girocerto-api`:
+   - Selecione o recurso `/` > **Create resource** > Resource name `relatorios` (sem proxy) > Create.
+   - Selecione `/relatorios` > **Create resource** > ligue **Proxy resource** > Resource name `{proxy+}` > Create.
+   - No **ANY** de `/relatorios/{proxy+}`: Lambda function, **Lambda proxy integration** ligado, função `girocerto-relatorios`.
+   - **Deploy API** > stage `prod` (o existente).
+
+   O API Gateway escolhe sempre o caminho mais específico, então `/relatorios/...` vai para a `girocerto-relatorios` e o resto continua na `girocerto-crud`.
+
+6. Teste:
+
+```bash
+curl "https://<api-id>.execute-api.us-east-1.amazonaws.com/prod/relatorios/faturamento-mensal?inicio=2026-01-01&fim=2026-12-31"
+curl "https://<api-id>.execute-api.us-east-1.amazonaws.com/prod/relatorios/servicos-mais-realizados"
+```
+
+Sem `inicio` e `fim`, os relatórios usam os últimos 12 meses.
+
+### 10. Anexos: bucket, CORS, Lambda `girocerto-processa-anexo` e evento (RF-02, RF-03)
+
+**10.1 Bucket privado com CORS.** No CloudShell (ou terminal com AWS CLI):
+
+```bash
+aws s3 mb s3://girocerto-anexos-5j11 --region us-east-1
+aws s3api put-bucket-cors --bucket girocerto-anexos-5j11 --cors-configuration '{
+  "CORSRules": [{
+    "AllowedOrigins": ["http://girocerto-web-5j11.s3-website-us-east-1.amazonaws.com"],
+    "AllowedMethods": ["PUT", "GET"],
+    "AllowedHeaders": ["*"],
+    "MaxAgeSeconds": 3000
+  }]
+}'
+```
+
+O bucket fica com o bloqueio de acesso público ligado (padrão). O navegador envia e lê os arquivos só por URLs pré-assinadas, geradas pela `girocerto-crud`.
+
+Pelo console: S3 > Create bucket `girocerto-anexos-5j11` (deixe "Block all public access" marcado) > Permissions > **Cross-origin resource sharing (CORS)** > Edit > cole só o conteúdo de `CORSRules` como uma lista JSON.
+
+**10.2 Lambda.** **Lambda > Create function**, igual ao passo 6.2, com nome `girocerto-processa-anexo` (Python 3.12, `LabRole`, VPC, subnets privadas, `sg-lambda`).
+
+- **Code > Upload from > .zip file** > `build/processa_anexo.zip`. Handler `app.handler`.
+- **General configuration**: memória **512 MB**, timeout **30 s** (gerar miniatura de foto grande usa mais memória).
+- **Environment variables**: `DB_HOST`, `DB_NAME`, `DB_USER` e `DB_PASSWORD`, iguais às da `girocerto-crud`.
+
+Ela acessa o S3 pelo Gateway Endpoint do passo 2.4 (sem NAT). Sem esse endpoint, ou sem a saída 443 do `sg-lambda` para a prefix list do S3, a Lambda dá timeout ao ler o arquivo.
+
+**10.3 Evento.** S3 > `girocerto-anexos-5j11` > **Properties** > **Event notifications** > **Create event notification**:
+
+| Campo | Valor |
+|-------|-------|
+| Event name | `processa-anexo` |
+| Prefix | `uploads/` |
+| Event types | **All object create events** |
+| Destination | Lambda function > `girocerto-processa-anexo` |
+
+O prefixo `uploads/` é obrigatório: a Lambda grava as miniaturas em `thumbs/`, e sem o filtro ela dispararia a si mesma.
+
+**10.4 Ligar a `girocerto-crud` ao bucket.** Na `girocerto-crud`, envie o `build/crud.zip` novo (passo 6.3) e confira a variável `ANEXOS_BUCKET` = `girocerto-anexos-5j11`.
+
+### 11. Publicar a versão nova do site e testar
+
+Repita o passo 8.2 (gerar o `config.js` e `aws s3 sync`). Depois, em `.../app.html`:
+
+1. **Ordens** > abra uma ordem > em "Fotos e documentos" envie um JPG ou PNG.
+2. O anexo aparece como **Processando** e, em poucos segundos, mostra a miniatura e fica **Processado**.
+3. Em **CloudWatch > Log groups > /aws/lambda/girocerto-processa-anexo**, o log mostra o arquivo, as dimensões e `situacao = PROCESSADO`.
+4. No bastion: `psql -c "SELECT id, nome_original, tamanho_bytes, largura, altura, situacao FROM anexo ORDER BY id DESC LIMIT 5;"`
+5. **Relatórios** mostra o faturamento por mês e os serviços mais realizados. Conclua uma ordem com serviços e clique em **Atualizar** para ver o número mudar.
 
 ## Ao iniciar uma nova sessão do Learner Lab
 
 Os recursos continuam existindo; só o que é cobrado por hora é parado quando a sessão termina.
 
 1. **RDS**: se estiver `Stopped`, **Actions > Start** e esperar `Available`. O endpoint não muda.
-2. **API Gateway, Lambda e S3**: nada a fazer. A URL da API e o `config.js` continuam válidos.
+2. **API Gateway, Lambdas e S3**: nada a fazer. A URL da API, o `config.js` e o evento do bucket de anexos continuam válidos.
 3. **Bastion** (só se precisar rodar SQL): **Instance state > Start**, pegar o **novo IP público** e atualizar a regra SSH do `sg-bastion` para **My IP**.
 
 Nenhum IP está no código: o front usa a URL do API Gateway e a Lambda usa o endpoint DNS do RDS.
