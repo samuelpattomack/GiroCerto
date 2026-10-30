@@ -337,7 +337,7 @@ function renderAnexos(anexos) {
     else if (a.situacao === "ERRO") previa = "Sem miniatura";
     const nome = a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.nomeOriginal)}</a>` : esc(a.nomeOriginal);
     return `
-      <div class="anexo">
+      <div class="cartao-anexo">
         <div class="miniatura">${previa}</div>
         <div><strong>${nome}</strong></div>
         <div class="muted">${tamanhoArquivo(a.tamanhoBytes)}${a.largura ? ` · ${a.largura}x${a.altura}` : ""} · ${dataBr(a.enviadoEm)}</div>
